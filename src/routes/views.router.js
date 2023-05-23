@@ -1,50 +1,72 @@
-// import { Router } from "express";
-// import { ProductManager } from "../managers/ProductManager.js";
-
-// const router = Router();
-
-// const prod = new ProductManager("./data/products.json");
-
-// router.get("/home", (req, res) => {
-//     const products = prod.getProducts();
-//     res.render("home", {products: products});
-// });
-
-// router.get("/realtimeproducts", async (req, res) => {
-//     try {
-//         const product = prod.getProducts();
-//         res.render("realTimeProducts", { products: product });
-//     } catch (err) {
-//         res.status(400).send(err);
-//     }
-// });
-
-// export default router;
-
 import express from "express";
-import productModel from "../models/product.model.js";
+import Cart from "../models/cart.model.js";
+import Product from "../models/product.model.js";
+import Paginate from '../paginate.js'
 
 const router = express.Router();
 
-// Ruta para la vista home
-router.get("/home", async (req, res) => {
+router.get("/products", async (req, res) => {
   try {
-    const products = await productModel.find().lean().exec();
-    res.render("home", { products });
+    const { page, limit } = req.query;
+    const pageNumber = parseInt(page) || 1;
+    const pageSize = parseInt(limit) || 10;
+
+    const count = await Product.countDocuments({});
+    const totalPages = Math.ceil(count / pageSize);
+    const skip = (pageNumber - 1) * pageSize;
+
+    const products = await Product.find({})
+      .skip(skip)
+      .limit(pageSize)
+      .lean();
+
+      const paginatedResults = new Paginate(products, pageNumber, pageSize )
+
+      res.render("products", {
+        products: paginatedResults.paginatedItems,
+        pageNumber: paginatedResults.currentPage,
+        totalPages: paginatedResults.totalPages,
+      });
+    } catch (err) {
+      res.status(400).send(err);
+    }
+});
+
+router.get("/products/:id", async (req, res) => {
+  try {
+    const productId = req.params.id;
+    const product = await Product.findById(productId).lean();
+    res.render("product-details", { product });
   } catch (err) {
-    res.status(500).send("Error al obtener los productos desde la base de datos");
+    res.status(400).send(err);
   }
 });
 
-// Ruta para la vista de productos en tiempo real
-router.get("/realtimeproducts", async (req, res) => {
+router.post("/carts/:cid/add-to-cart/:pid", async (req, res) => {
   try {
-    const products = await productModel.find().lean().exec();
-    res.render("realtimeproducts", { products });
+    const cartId = req.params.cid;
+    const productId = req.params.pid;
+
+    const cart = await Cart.findById(cartId);
+    const product = await Product.findById(productId);
+
+    cart.products.push(product);
+    await cart.save();
+
+    res.redirect(`/carts/${cartId}`);
   } catch (err) {
-    res.status(500).send("Error al obtener los productos desde la base de datos");
+    res.status(400).send(err);
+  }
+});
+
+router.get("/carts/:cid", async (req, res) => {
+  try {
+    const cartId = req.params.cid;
+    const cart = await Cart.findById(cartId).populate("products").lean();
+    res.render("cart-details", { cart });
+  } catch (err) {
+    res.status(400).send(err);
   }
 });
 
 export default router;
-
